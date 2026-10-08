@@ -1,0 +1,195 @@
+import { useEffect, useState } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { ChevronLeft, Play, CheckCircle2, Clock, Lock } from 'lucide-react';
+import { supabase, type Lesson } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
+import { getEpisodeById } from '../data/episodes';
+import { ACTIVITIES, type ActivityKey } from './EpisodeView';
+import { openLessonSession } from '../lib/usePreventBack';
+
+export default function ActivityView() {
+  const { id, activity } = useParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const episode = getEpisodeById(Number(id));
+  const [lessons, setLessons] = useState<Lesson[]>([]);
+  const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
+
+  const activityConfig = ACTIVITIES.find((a) => a.key === (activity as ActivityKey));
+
+  useEffect(() => {
+    async function loadData() {
+      if (!user) return;
+      const [{ data: lessonData }, { data: progressData }] = await Promise.all([
+        supabase.from('lessons').select('*').eq('episode_id', Number(id)).order('lesson_number', { ascending: true }),
+        supabase.from('user_progress').select('lesson_id').eq('user_id', user.id),
+      ]);
+      setLessons(lessonData ?? []);
+      setCompletedIds(new Set((progressData ?? []).map((p) => p.lesson_id)));
+      setLoading(false);
+    }
+    loadData();
+  }, [id, user]);
+
+  if (!episode || !activityConfig) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-12 text-center">
+        <p className="text-gray-500 mb-4">Activity not found.</p>
+        <Link to="/welcome" className="text-[#0891b2] font-semibold hover:underline">Back to Dashboard</Link>
+      </div>
+    );
+  }
+
+  const Icon = activityConfig.icon;
+  const completedCount = lessons.filter((l) => completedIds.has(l.id)).length;
+  const progressPct = lessons.length > 0 ? Math.round((completedCount / lessons.length) * 100) : 0;
+
+  return (
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 pb-28 sm:pb-12">
+      <Link
+        to={`/episode/${id}`}
+        className="inline-flex items-center gap-2 bg-white border border-gray-200 shadow-premium-sm rounded-full pl-2.5 pr-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 hover:border-gray-300 hover:shadow-premium-sm transition-all active:scale-95 mb-5"
+      >
+        <span className="w-6 h-6 rounded-full bg-[#0891b2] flex items-center justify-center">
+          <ChevronLeft size={14} className="text-white" strokeWidth={2.5} />
+        </span>
+        Back to Episode
+      </Link>
+
+      {/* ── Activity Hero ── */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#0891b2] via-[#0e7490] to-[#155e75] px-6 py-8 sm:px-10 sm:py-10 mb-6">
+        <div className="absolute right-0 top-0 w-56 h-56 rounded-full bg-white/[0.04] -translate-y-1/3 translate-x-1/3" />
+        <div className="absolute left-0 bottom-0 w-40 h-40 rounded-full bg-white/[0.03] translate-y-1/3 -translate-x-1/3" />
+
+        <div className="relative z-10 flex items-start justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white/15 backdrop-blur-sm flex items-center justify-center border border-white/20 flex-shrink-0">
+              <Icon size={28} className="text-white" strokeWidth={1.8} />
+            </div>
+            <div>
+              <span className="text-[11px] font-bold uppercase tracking-widest text-cyan-200/70">
+                Episode {episode.id} · {episode.title}
+              </span>
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight mt-1">
+                {activityConfig.title}
+              </h1>
+              <p className="text-cyan-200/80 text-sm mt-0.5">{activityConfig.subtitle}</p>
+            </div>
+          </div>
+
+          {/* mini progress */}
+          <div className="flex-shrink-0 text-right hidden sm:block">
+            <div className="text-2xl font-extrabold text-white">{progressPct}%</div>
+            <div className="text-cyan-200/70 text-xs">{completedCount}/{lessons.length} done</div>
+          </div>
+        </div>
+
+        {/* progress bar */}
+        <div className="relative z-10 mt-6">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-cyan-200/70">Progress</span>
+            <span className="text-xs font-bold text-white sm:hidden">{completedCount}/{lessons.length} done</span>
+          </div>
+          <div className="h-1.5 bg-white/15 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-white rounded-full transition-all duration-700"
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* ── Lessons List ── */}
+      {loading ? (
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="bg-white rounded-2xl border border-gray-100 p-4 animate-pulse flex items-center gap-4">
+              <div className="w-12 h-12 bg-gray-100 rounded-xl" />
+              <div className="flex-1">
+                <div className="h-4 bg-gray-100 rounded w-1/4 mb-2" />
+                <div className="h-3 bg-gray-100 rounded w-1/2" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : lessons.length === 0 ? (
+        <div className="bg-white rounded-3xl border border-gray-100 p-12 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-3">
+            <Icon size={28} className="text-gray-300" />
+          </div>
+          <p className="text-gray-400 text-sm">No lessons in this episode yet.</p>
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          {lessons.map((lesson, idx) => {
+            const done = completedIds.has(lesson.id);
+            const isFirst = idx === 0;
+            const prevDone = idx === 0 || completedIds.has(lessons[idx - 1].id);
+            const locked = !isFirst && !prevDone;
+
+            return (
+              <button
+                key={lesson.id}
+                onClick={() => { if (!locked) { openLessonSession(`/lesson/${lesson.id}`); navigate(`/lesson/${lesson.id}`); } }}
+                disabled={locked}
+                className={`w-full group flex items-center gap-4 bg-white border rounded-2xl p-4 text-left transition-all duration-200 ${
+                  done
+                    ? 'border-green-100 hover:border-green-200 hover:shadow-premium-sm hover:shadow-green-500/5'
+                    : locked
+                    ? 'border-gray-100 opacity-50 cursor-not-allowed'
+                    : 'border-gray-100 hover:border-[#0891b2]/30 hover:shadow-premium-lg hover:shadow-[#0891b2]/8 cursor-pointer'
+                }`}
+                style={{ animation: `slideIn 0.35s ease-out ${idx * 60}ms both` }}
+              >
+                {/* Icon */}
+                <div className={`relative w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 transition-all ${
+                  done
+                    ? 'bg-green-50'
+                    : locked
+                    ? 'bg-gray-100'
+                    : 'bg-[#0891b2]/10 group-hover:bg-[#0891b2]/15'
+                }`}>
+                  {done ? (
+                    <CheckCircle2 size={22} className="text-green-500" />
+                  ) : locked ? (
+                    <Lock size={18} className="text-gray-400" />
+                  ) : (
+                    <Play size={18} className="text-[#0891b2] ml-0.5" fill="#0891b2" />
+                  )}
+                  {/* lesson number badge */}
+                  <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-white border border-gray-200 text-[10px] font-bold text-gray-600 flex items-center justify-center shadow-premium-sm">
+                    {lesson.lesson_number}
+                  </span>
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-bold text-gray-900 text-sm sm:text-base truncate">{lesson.title}</h4>
+                  <p className="text-xs text-gray-400 truncate mt-0.5">{lesson.subtitle}</p>
+                </div>
+
+                {/* Right side */}
+                <div className="flex items-center gap-2.5 flex-shrink-0">
+                  <div className="flex items-center gap-1 text-xs text-gray-400 bg-gray-50 px-2.5 py-1 rounded-full">
+                    <Clock size={11} />
+                    <span>{lesson.duration_minutes}m</span>
+                  </div>
+                  {done ? (
+                    <span className="text-xs font-semibold text-green-600 bg-green-50 px-2.5 py-1 rounded-full">
+                      Done
+                    </span>
+                  ) : !locked && (
+                    <div className="w-7 h-7 rounded-full bg-[#0891b2] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all scale-75 group-hover:scale-100 shadow-premium-blue shadow-[#0891b2]/10">
+                      <ChevronLeft size={13} className="text-white rotate-180" strokeWidth={2.5} />
+                    </div>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}

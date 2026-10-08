@@ -1,0 +1,1 @@
+CREATE INDEX IF NOT EXISTS profiles_total_points_desc_idx ON public.profiles (total_points DESC);
